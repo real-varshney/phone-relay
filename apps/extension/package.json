@@ -1,0 +1,6 @@
+{
+  "name": "@phone-relay/extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chrome/Edge unpacked extension for Phone Relay"
+}

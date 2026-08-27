@@ -1,0 +1,22 @@
+{
+  "name": "phone-relay",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Local laptop dashboard + phone HTTP relay",
+  "workspaces": [
+    "packages/*",
+    "apps/web/backend",
+    "apps/web/frontend",
+    "apps/extension"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @phone-relay/backend",
+    "launch": "wscript.exe //B //Nologo shortcut/launch.vbs",
+    "dev:ui": "npm run dev -w @phone-relay/web",
+    "test": "npm test -w @phone-relay/validation && npm test -w @phone-relay/protocol && npm test -w @phone-relay/backend",
+    "build": "npm run build -w @phone-relay/web && npm run build -w @phone-relay/backend"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

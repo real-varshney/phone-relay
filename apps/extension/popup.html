@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Phone Relay</title>
+    <style>
+      body { font: 13px/1.45 Segoe UI, sans-serif; width: 300px; margin: 0; padding: 14px; background: #0b1020; color: #e8edff; }
+      h1 { font-size: 14px; margin: 0 0 8px; }
+      p { color: #93a0c8; margin: 0 0 10px; }
+      .tab { background: #141a2e; border-radius: 8px; padding: 10px; margin-bottom: 12px; font-size: 12px; word-break: break-word; }
+      button { width: 100%; padding: 10px; border: 0; border-radius: 8px; font-weight: 700; cursor: pointer; }
+      .on { background: #3ddc97; color: #081018; }
+      .off { background: #2a3354; color: #e8edff; }
+      label.row { display: flex; align-items: center; gap: 8px; margin: 10px 0 0; color: #e8edff; font-size: 12px; cursor: pointer; }
+      label.row input { margin: 0; }
+      .hint { font-size: 11px; color: #93a0c8; margin-top: 10px; }
+      .err { color: #ff6b7d; font-size: 12px; margin-top: 8px; }
+      a { color: #6ea8ff; }
+    </style>
+  </head>
+  <body>
+    <h1>Phone Relay</h1>
+    <div class="tab" id="tabLabel">Loading current tab…</div>
+    <p id="state">Checking…</p>
+    <button id="toggle">Toggle</button>
+    <label class="row"><input type="checkbox" id="adBlock" checked /> Block ads &amp; trackers on relay tabs</label>
+    <p class="hint">
+      1. Open <a href="http://127.0.0.1:3000/portal" target="_blank">127.0.0.1:3000/portal</a>.<br />
+      2. Enable routing on that tab (or it enables when you click Open).<br />
+      3. Enter the site on the portal — never type it in the Chrome address bar.
+    </p>
+    <p class="err" id="error" hidden></p>
+    <script src="popup.js"></script>
+  </body>
+</html>

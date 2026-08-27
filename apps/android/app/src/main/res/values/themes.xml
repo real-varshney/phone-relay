@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.PhoneRelay" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">#0B1020</item>
+        <item name="android:navigationBarColor">#0B1020</item>
+        <item name="android:windowBackground">#0B1020</item>
+    </style>
+    <style name="Theme.PhoneRelay.Scanner" parent="Theme.PhoneRelay">
+        <item name="android:windowFullscreen">false</item>
+    </style>
+</resources>
