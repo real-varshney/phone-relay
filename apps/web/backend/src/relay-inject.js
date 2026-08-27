@@ -11,6 +11,42 @@
   const RELAY_API_PREFIX = "/api/pr7k9m2";
   const PROXY_PATH_RE = /^\/proxy\/(https?)\/([^/]+)(\/.*)?$/;
 
+  function relayControlPath(pathname) {
+    const p = String(pathname).split("?")[0].split("#")[0];
+    return (
+      p === "/" ||
+      p === "/health" ||
+      p.startsWith("/portal") ||
+      p.startsWith("/phone") ||
+      p.startsWith("/proxy") ||
+      p === RELAY_API_PREFIX ||
+      p.startsWith(`${RELAY_API_PREFIX}/`) ||
+      p.endsWith("/relay-inject.js") ||
+      p.endsWith("/ad-filters.js")
+    );
+  }
+
+  function proxyTypesSet() {
+    const raw = window.__PHONE_RELAY_PROXY_TYPES__;
+    if (Array.isArray(raw) && raw.length) return new Set(raw);
+    try {
+      const stored = sessionStorage.getItem("__relay_proxy_types__");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length) return new Set(parsed);
+      }
+    } catch {
+      /* ignore */
+    }
+    return null;
+  }
+
+  function shouldProxyKind(kind) {
+    const set = proxyTypesSet();
+    if (!set) return true;
+    return set.has(kind);
+  }
+
   function rememberRelaySite(scheme, host) {
     try {
       sessionStorage.setItem("__relay_site_scheme__", scheme);
@@ -78,14 +114,7 @@
     try {
       const u = new URL(abs);
       if (!LOCAL.has(u.hostname)) return false;
-      return (
-        u.pathname.startsWith("/proxy") ||
-        u.pathname.startsWith("/portal") ||
-        u.pathname.endsWith("/relay-inject.js") ||
-        u.pathname.endsWith("/ad-filters.js") ||
-        u.pathname === RELAY_API_PREFIX ||
-        u.pathname.startsWith(`${RELAY_API_PREFIX}/`)
-      );
+      return relayControlPath(u.pathname);
     } catch {
       return false;
     }
@@ -249,6 +278,7 @@
     try {
       const u = new URL(abs);
       if (!LOCAL.has(u.hostname) || u.pathname.startsWith("/proxy")) return null;
+      if (relayControlPath(u.pathname)) return null;
       if (isBackendUrl(abs)) return null;
 
       if (RELAY_CDN_ROOT.test(u.pathname)) {
@@ -267,8 +297,60 @@
     }
   }
 
-  function toProxy(raw) {
+  function isProxiedUrl(value) {
+    const s = String(value);
+    return s.includes("/proxy/") || s.startsWith(`${PROXY_ORIGIN}/proxy/`);
+  }
+
+  function attrProxyKind(name, el) {
+    const n = String(name).toLowerCase();
+    if (n === "srcset") return "image";
+    if (n === "src" || n === "poster" || n === "data-src") {
+      if (el instanceof HTMLScriptElement) return "script";
+      if (el instanceof HTMLImageElement) return "image";
+      if (el instanceof HTMLMediaElement) return "media";
+      if (el instanceof HTMLIFrameElement) return "sub_frame";
+      if (el instanceof HTMLSourceElement) return "media";
+      return "other";
+    }
+    if (n === "href" && el instanceof HTMLLinkElement) {
+      const rel = (el.rel || "").toLowerCase();
+      if (rel.includes("stylesheet") || el.as === "style") return "stylesheet";
+      if (rel.includes("preload") && el.as === "script") return "script";
+      if (el.as === "font") return "font";
+      if (el.as === "image") return "image";
+      return "other";
+    }
+    if (n === "href") return "other";
+    return "other";
+  }
+
+  function toProxy(raw, kind = "other") {
     try {
+      const s = String(raw);
+      if (isProxiedUrl(s)) return s;
+      if (!shouldProxyKind(kind)) {
+        if (s.startsWith("/")) {
+          const pathOnly = s.split("?")[0].split("#")[0];
+          if (relayControlPath(pathOnly)) return `${PROXY_ORIGIN}${s.startsWith("/") ? s : `/${s}`}`;
+          const site = parseRelaySite();
+          if (site) return `${site.scheme}://${site.host}${s.startsWith("/") ? s : `/${s}`}`;
+        }
+        try {
+          const abs = new URL(raw, pageBaseUrl()).href;
+          if (isBackendUrl(abs)) return abs;
+          if (/^https?:/i.test(abs) && !LOCAL.has(new URL(abs).hostname)) return abs;
+        } catch {
+          /* ignore */
+        }
+        return raw;
+      }
+      if (s.startsWith("/")) {
+        const pathOnly = s.split("?")[0].split("#")[0];
+        if (relayControlPath(pathOnly)) {
+          return `${PROXY_ORIGIN}${s.startsWith("/") ? s : `/${s}`}`;
+        }
+      }
       const abs = new URL(raw, pageBaseUrl()).href;
       const leaked = leakedLocalhostToProxy(abs);
       if (leaked) return leaked;
@@ -299,7 +381,7 @@
       if (nextInit?.body != null) nextInit.body = fixBody(nextInit.body);
 
       if (input instanceof Request) {
-        const url = toProxy(input.url);
+        const url = toProxy(input.url, "xmlhttprequest");
         const target = targetFromProxy(url);
         if (url === input.url || !target) return origFetch(input, init);
         if (isAdBlocked(target.href)) return blockedResponse();
@@ -320,7 +402,7 @@
         return resp;
       }
 
-      const url = toProxy(String(input));
+      const url = toProxy(String(input), "xmlhttprequest");
       const target = targetFromProxy(url);
       if (url === String(input) || !target) return origFetch(input, init);
       if (isAdBlocked(target.href)) return blockedResponse();
@@ -344,8 +426,8 @@
   const origSetHeader = XMLHttpRequest.prototype.setRequestHeader;
 
   XMLHttpRequest.prototype.open = function (method, url, ...rest) {
-    this.__relayTarget = targetFromProxy(toProxy(url));
-    return origOpen.call(this, method, toProxy(url), ...rest);
+    this.__relayTarget = targetFromProxy(toProxy(url, "xmlhttprequest"));
+    return origOpen.call(this, method, toProxy(url, "xmlhttprequest"), ...rest);
   };
 
   XMLHttpRequest.prototype.setRequestHeader = function (name, value) {
@@ -392,10 +474,114 @@
   if (navigator.sendBeacon) {
     const origBeacon = navigator.sendBeacon.bind(navigator);
     navigator.sendBeacon = function (url, data) {
-      const target = targetFromProxy(toProxy(String(url)));
+      const proxied = toProxy(String(url), "ping");
+      const target = targetFromProxy(proxied);
       if (target && isAdBlocked(target.href)) return true;
       const fixed = typeof data === "string" ? fixProxyLeaks(data) : data;
-      return origBeacon(toProxy(String(url)), fixed);
+      return origBeacon(proxied, fixed);
     };
   }
+
+  function rewriteSrcset(raw) {
+    return String(raw)
+      .split(",")
+      .map((part) => {
+        const t = part.trim();
+        const sp = t.lastIndexOf(" ");
+        if (sp === -1) return toProxy(t, "image");
+        return `${toProxy(t.slice(0, sp), "image")}${t.slice(sp)}`;
+      })
+      .join(", ");
+  }
+
+  function proxyUrlAttr(name, value, el) {
+    const n = String(name).toLowerCase();
+    const v = String(value);
+    const kind = el instanceof Element ? attrProxyKind(name, el) : "other";
+    if (v.startsWith("/")) {
+      const pathOnly = v.split("?")[0].split("#")[0];
+      if (relayControlPath(pathOnly)) return v;
+    }
+    if (n === "srcset") return rewriteSrcset(value);
+    if (isProxiedUrl(v)) return v;
+    if (n === "src" || n === "href" || n === "poster" || n === "data-src") return toProxy(String(value), kind);
+    return value;
+  }
+
+  const origSetAttribute = Element.prototype.setAttribute;
+  Element.prototype.setAttribute = function (name, value) {
+    if (typeof value === "string") {
+      const next = proxyUrlAttr(name, value, this);
+      if (next !== value) return origSetAttribute.call(this, name, next);
+    }
+    return origSetAttribute.call(this, name, value);
+  };
+
+  function patchUrlProperty(proto, prop, defaultKind) {
+    const desc = Object.getOwnPropertyDescriptor(proto, prop);
+    if (!desc?.set) return;
+    Object.defineProperty(proto, prop, {
+      get: desc.get,
+      set(value) {
+        const s = String(value);
+        if (isProxiedUrl(s)) {
+          desc.set.call(this, s);
+          return;
+        }
+        const kind =
+          proto === HTMLLinkElement.prototype && prop === "href"
+            ? attrProxyKind(prop, this)
+            : defaultKind;
+        desc.set.call(this, toProxy(s, kind));
+      },
+      configurable: true,
+    });
+  }
+
+  patchUrlProperty(HTMLImageElement.prototype, "src", "image");
+  patchUrlProperty(HTMLScriptElement.prototype, "src", "script");
+  patchUrlProperty(HTMLIFrameElement.prototype, "src", "sub_frame");
+  patchUrlProperty(HTMLMediaElement.prototype, "src", "media");
+  patchUrlProperty(HTMLSourceElement.prototype, "src", "media");
+  patchUrlProperty(HTMLLinkElement.prototype, "href", "stylesheet");
+
+  function rewriteExistingDom(root) {
+    const scope = root?.querySelectorAll ? root : document;
+    scope.querySelectorAll("[src], [href], [srcset], [data-src], [poster]").forEach((el) => {
+      for (const attr of ["src", "href", "srcset", "data-src", "poster"]) {
+        const v = el.getAttribute(attr);
+        if (!v || v.startsWith("data:") || v.startsWith("blob:")) continue;
+        const next = proxyUrlAttr(attr, v, el);
+        if (next !== v) el.setAttribute(attr, next);
+      }
+    });
+  }
+
+  function installDomObserver() {
+    rewriteExistingDom(document);
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        if (record.type === "attributes" && record.target instanceof Element) {
+          const attr = record.attributeName;
+          if (!attr) continue;
+          const v = record.target.getAttribute(attr);
+          if (!v) continue;
+          const next = proxyUrlAttr(attr, v, record.target);
+          if (next !== v) record.target.setAttribute(attr, next);
+        }
+        record.addedNodes.forEach((node) => {
+          if (node instanceof Element) rewriteExistingDom(node);
+        });
+      }
+    });
+    observer.observe(document.documentElement, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["src", "href", "srcset", "data-src", "poster"],
+    });
+  }
+
+  if (document.documentElement) installDomObserver();
+  else document.addEventListener("DOMContentLoaded", installDomObserver, { once: true });
 })();

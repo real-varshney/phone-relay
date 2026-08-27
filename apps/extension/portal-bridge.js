@@ -30,8 +30,25 @@
     }
 
     if (detail.type === "openTarget") {
-      chrome.runtime.sendMessage({ type: "openRelayTarget", url: detail.url }, (res) => {
-        reply(res ?? { ok: false, error: "No response from extension." });
+      chrome.runtime.sendMessage(
+        { type: "openRelayTarget", url: detail.url, proxyTypes: detail.proxyTypes },
+        (res) => {
+          reply(res ?? { ok: false, error: "No response from extension." });
+        },
+      );
+      return;
+    }
+
+    if (detail.type === "getAdBlock") {
+      chrome.runtime.sendMessage({ type: "getAdBlockState" }, (res) => {
+        reply(res ?? { enabled: true });
+      });
+      return;
+    }
+
+    if (detail.type === "setAdBlock") {
+      chrome.runtime.sendMessage({ type: "setAdBlockEnabled", enabled: detail.enabled }, (res) => {
+        reply(res ?? { ok: false });
       });
     }
   });

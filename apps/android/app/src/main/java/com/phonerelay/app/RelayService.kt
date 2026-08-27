@@ -11,7 +11,9 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
@@ -30,12 +32,15 @@ class RelayService : Service() {
         .build()
     private val relayHttp = OkHttpClient.Builder()
         .cookieJar(RelayCookieJar())
+        .protocols(listOf(Protocol.HTTP_1_1))
+        .connectionPool(ConnectionPool(16, 5, TimeUnit.MINUTES))
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(120, TimeUnit.SECONDS)
         .writeTimeout(120, TimeUnit.SECONDS)
         .build()
     private val relay = HttpRelay(relayHttp)
     private val workers = Executors.newCachedThreadPool()
+    private val relaySlots = java.util.concurrent.Semaphore(12)
     private val scheduler = Executors.newSingleThreadScheduledExecutor()
     private var socket: WebSocket? = null
     private var wakeLock: PowerManager.WakeLock? = null
@@ -175,8 +180,13 @@ class RelayService : Service() {
                             )
                         }
                         workers.execute {
-                            val reply = relay.execute(msg)
-                            webSocket.send(reply.toString())
+                            relaySlots.acquire()
+                            try {
+                                val reply = relay.execute(msg)
+                                webSocket.send(reply.toString())
+                            } finally {
+                                relaySlots.release()
+                            }
                         }
                     }
                     "revoke" -> {

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Phone Relay",
-  "version": "0.7.3",
+  "version": "0.8.3",
   "description": "Browse blocked sites through the phone — open them from the relay portal.",
   "permissions": [
     "declarativeNetRequestWithHostAccess",

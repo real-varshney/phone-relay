@@ -79,14 +79,42 @@ describe("rewriteHeadersForTarget", () => {
     expect(headers.Referer).toBe(manifest);
   });
 
-  it("drops Sec-Fetch headers in incomingToRelay", () => {
+  it("uses relay-site cookie when Referer is the dashboard root", () => {
+    const headers: Record<string, string> = {
+      Referer: "http://127.0.0.1:3000/",
+      Cookie: "relay-site=www.hotstar.com; relay-scheme=https",
+    };
+    rewriteHeadersForTarget(
+      headers,
+      { headers: { cookie: headers.Cookie, referer: headers.Referer }, method: "GET" } as import("node:http").IncomingMessage,
+      proxyRefererToSiteUrl,
+      { targetHost: "img10.hotstar.com", method: "GET" },
+    );
+    expect(headers.Origin).toBe("https://www.hotstar.com");
+    expect(headers.Referer).toBe("https://www.hotstar.com/");
+  });
+
+  it("drops Sec-Ch-Ua headers but forwards Sec-Fetch for upstream CDN checks", () => {
     const out = incomingToRelay({
       "Sec-Fetch-Site": "same-origin",
       "Sec-Fetch-Mode": "cors",
+      "Sec-Fetch-Dest": "document",
+      "sec-ch-ua": '"Chromium";v="120"',
       "User-Agent": "Test",
     });
-    expect(out["Sec-Fetch-Site"]).toBeUndefined();
+    expect(out["Sec-Fetch-Site"]).toBe("same-origin");
+    expect(out["Sec-Fetch-Mode"]).toBe("cors");
+    expect(out["Sec-Fetch-Dest"]).toBe("document");
+    expect(out["sec-ch-ua"]).toBeUndefined();
     expect(out["User-Agent"]).toBe("Test");
+  });
+
+  it("strips relay-only cookies before forwarding to the phone", () => {
+    const out = incomingToRelay({
+      Cookie:
+        "relay-site=www.hotstar.com; relay-scheme=https; relay-proxy-types=%5B%22stylesheet%22%5D; session=abc; relay-cdn-host=foo.cdn.hotstar.com",
+    });
+    expect(out.Cookie).toBe("session=abc");
   });
 
   it("packs upstream Set-Cookie into x-relay-set-cookie for the browser bridge", () => {

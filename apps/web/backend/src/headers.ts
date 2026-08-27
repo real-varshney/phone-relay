@@ -1,5 +1,6 @@
 import type { IncomingMessage } from "node:http";
 import { isStreamingMediaCdnHost } from "./cdn-host-cache.ts";
+import { parseRelaySiteCookie } from "./leaked-asset.ts";
 
 const HOP_BY_HOP = new Set([
   "connection",
@@ -21,10 +22,31 @@ const DROP_FROM_BROWSER = new Set([
   "x-relay-manifest-referer",
 ]);
 
+/** Local relay cookies must never be forwarded to upstream sites. */
+const RELAY_COOKIE_NAMES = new Set([
+  "relay-site",
+  "relay-scheme",
+  "relay-proxy-types",
+  "relay-cdn-host",
+]);
+
+export function stripRelayCookies(cookieHeader: string): string {
+  const kept = cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .filter((part) => {
+      const eq = part.indexOf("=");
+      const name = (eq === -1 ? part : part.slice(0, eq)).trim().toLowerCase();
+      return !RELAY_COOKIE_NAMES.has(name);
+    });
+  return kept.join("; ");
+}
+
 function shouldDropBrowserHeader(key: string): boolean {
   const lower = key.toLowerCase();
   if (DROP_FROM_BROWSER.has(lower)) return true;
-  if (lower.startsWith("sec-fetch-")) return true;
+  // Keep Sec-Fetch-* for upstream bot/CDN checks (Hotstar resets without them).
   if (lower.startsWith("sec-ch-ua")) return true;
   return false;
 }
@@ -77,6 +99,16 @@ export function rewriteHeadersForTarget(
   }
 
   let siteOrigin: string | null = xOrigin ?? null;
+
+  if (!siteReferer) {
+    const cookieHeader = typeof req.headers.cookie === "string" ? req.headers.cookie : undefined;
+    const relaySite = parseRelaySiteCookie(cookieHeader);
+    if (relaySite) {
+      siteOrigin = siteOrigin ?? `${relaySite.scheme}://${relaySite.host}`;
+      siteReferer = `${relaySite.scheme}://${relaySite.host}/`;
+    }
+  }
+
   if (!siteOrigin && siteReferer) {
     try {
       siteOrigin = new URL(siteReferer).origin;
@@ -127,6 +159,12 @@ export function incomingToRelay(
     const key = rawKey.toLowerCase();
     if (HOP_BY_HOP.has(key) || shouldDropBrowserHeader(rawKey)) continue;
     if (value === undefined) continue;
+    if (key === "cookie") {
+      const raw = Array.isArray(value) ? value.join("; ") : value;
+      const stripped = stripRelayCookies(raw);
+      if (stripped) out[rawKey] = stripped;
+      continue;
+    }
     out[rawKey] = Array.isArray(value) ? value.join(", ") : value;
   }
   return out;

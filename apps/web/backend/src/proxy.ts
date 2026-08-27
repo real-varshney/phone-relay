@@ -1,5 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { decodeRelayTarget, RELAY_MAX_BODY_BYTES } from "@phone-relay/protocol";
+import {
+  decodeRelayTarget,
+  normalizeRelayTarget,
+  parseProxyTypesCookie,
+  RELAY_MAX_BODY_BYTES,
+} from "@phone-relay/protocol";
 import { inspectDestination } from "@phone-relay/validation";
 import {
   isCssContentType,
@@ -106,6 +111,7 @@ export async function handleProxy(
     );
     return;
   }
+  target = normalizeRelayTarget(target);
 
   const policy = await inspectDestination(target, {
     allowPrivateLan: deps.allowPrivateLan() || deps.policyTestMode,
@@ -155,19 +161,40 @@ export async function handleProxy(
     method: req.method ?? "GET",
     cachedManifestUrl: cachedManifestUrl(clientKey) ?? undefined,
   });
+  if (
+    !relayHeaders.Cookie &&
+    !relayHeaders.cookie &&
+    !isStreamingMediaCdnHost(policy.hostname)
+  ) {
+    relayHeaders["X-Relay-No-Cookies"] = "1";
+  }
 
   const hasRange = Boolean(relayHeaders.Range ?? relayHeaders.range);
   const timeoutHeader = Number(req.headers["x-relay-timeout"] ?? (hasRange ? 120000 : 30000));
   const timeoutMs = Number.isFinite(timeoutHeader) ? Math.min(Math.max(timeoutHeader, 5000), 180000) : 30000;
 
   const started = Date.now();
-  const result = await deps.hub.relay({
+  let result = await deps.hub.relay({
     method: (req.method ?? "GET").toUpperCase(),
     url: policy.url.toString(),
     headers: relayHeaders,
     bodyBase64: body.length ? body.toString("base64") : null,
     timeoutMs,
   });
+  const cancelMsg = result.error?.message ?? "";
+  if (
+    result.error?.code === "DESTINATION_UNREACHABLE" &&
+    (cancelMsg.includes("CANCEL") || cancelMsg.includes("stream was reset"))
+  ) {
+    await new Promise((r) => setTimeout(r, 350));
+    result = await deps.hub.relay({
+      method: (req.method ?? "GET").toUpperCase(),
+      url: policy.url.toString(),
+      headers: relayHeaders,
+      bodyBase64: body.length ? body.toString("base64") : null,
+      timeoutMs,
+    });
+  }
 
   const durationMs = Date.now() - started;
   const hostName = policy.hostname;
@@ -207,11 +234,14 @@ export async function handleProxy(
 
   const contentType = headers["content-type"] ?? headers["Content-Type"];
   const ct = typeof contentType === "string" ? contentType : undefined;
+  const cssProxyTypes = parseProxyTypesCookie(req.headers.cookie);
   if (isPlainTextBody(payload)) {
     if (isHtmlContentType(ct)) {
+      // HTML via /proxy/ always needs full rewrite (Hotstar, streaming). Selective
+      // proxy types are enforced by the extension DNR + inject, not HTML rewriting.
       payload = Buffer.from(rewriteHtml(payload.toString("utf8"), policy.url.toString(), deps.origin), "utf8");
     } else if (isCssContentType(ct)) {
-      payload = Buffer.from(rewriteCssUrls(payload.toString("utf8"), deps.origin), "utf8");
+      payload = Buffer.from(rewriteCssUrls(payload.toString("utf8"), deps.origin, cssProxyTypes), "utf8");
     } else if (shouldRewriteManifest(ct, policy.url.toString(), payload.toString("utf8"))) {
       const manifestText = rewriteManifestUrls(payload.toString("utf8"), deps.origin, policy.url.toString());
       payload = Buffer.from(manifestText, "utf8");

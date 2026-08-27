@@ -144,6 +144,10 @@ function Start-Backend {
 }
 
 function Open-Dashboard {
+    param(
+        [string]$Path = "/"
+    )
+    $targetUrl = if ($Path.StartsWith("http")) { $Path } else { "$DashboardUrl$Path" }
     $chromePaths = @(
         "${env:ProgramFiles}\Google\Chrome\Application\chrome.exe",
         "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
@@ -151,9 +155,10 @@ function Open-Dashboard {
     )
     $chrome = $chromePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
     if ($chrome) {
-        Start-Process $chrome $DashboardUrl
+        # New window avoids reusing a proxy tab where the extension still has routing/inject active.
+        Start-Process $chrome @("--new-window", $targetUrl)
     } else {
-        Start-Process $DashboardUrl
+        Start-Process $targetUrl
     }
 }
 

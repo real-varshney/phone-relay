@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { relayApiPath, toPathProxyUrl } from "@phone-relay/protocol";
+import { useEffect, useState } from "react";
+import { relayApiPath } from "@phone-relay/protocol";
 import { Portal } from "./Portal";
 
 type Status = {
@@ -70,14 +70,6 @@ function Dashboard() {
   const lanIp = status?.laptopLanIp ?? "—";
   const healthUrl = lanIp !== "—" ? `http://${lanIp}:${port}/health` : null;
   const connected = status?.phoneStatus === "CONNECTED";
-
-  const portalHref = useMemo(() => {
-    try {
-      return toPathProxyUrl(new URL(url).toString(), location.origin);
-    } catch {
-      return "/portal";
-    }
-  }, [url]);
 
   async function refreshPairing() {
     setPairing(await fetch(relayApiPath("pairing"), { method: "POST" }).then((r) => r.json()));
@@ -202,8 +194,11 @@ function Dashboard() {
         <label htmlFor="test-url">URL</label>
         <input id="test-url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com" />
         <div className="actions">
-          <a className="btn secondary" href={portalHref}>
-            Open via proxy
+          <a
+            className="btn secondary"
+            href={`/portal?target=${encodeURIComponent(url.trim() || "https://httpbin.org/ip")}`}
+          >
+            Open in portal
           </a>
         </div>
       </section>

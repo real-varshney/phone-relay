@@ -44,11 +44,13 @@ $notify.Visible = $true
 $menu = New-Object System.Windows.Forms.ContextMenuStrip
 
 $openItem = $menu.Items.Add("Open dashboard")
+$portalItem = $menu.Items.Add("Open portal")
 $stopItem = $menu.Items.Add("Stop Phone Relay")
 $menu.Items.Add("-") | Out-Null
 $exitItem = $menu.Items.Add("Exit tray")
 
 $openItem.Add_Click({ Open-Dashboard })
+$portalItem.Add_Click({ Open-Dashboard -Path "/portal" })
 $stopItem.Add_Click({
     Stop-PhoneRelay
     $notify.Text = "Phone Relay - stopped"

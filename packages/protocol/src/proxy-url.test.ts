@@ -4,6 +4,9 @@ import {
   decodeRelayTarget,
   encodeRelayUrl,
   isLocalBackendUrl,
+  isRelayControlPath,
+  normalizeRelayTarget,
+  toPathProxyUrl,
 } from "./proxy-url.ts";
 
 describe("proxy URL", () => {
@@ -34,5 +37,24 @@ describe("proxy URL", () => {
   it("does not double-wrap an already proxied URL", () => {
     const once = encodeRelayUrl("https://example.com/");
     expect(encodeRelayUrl(once)).toBe(once);
+  });
+
+  it("recognizes relay control paths that must not be proxied", () => {
+    expect(isRelayControlPath("/portal")).toBe(true);
+    expect(isRelayControlPath("/portal?target=https://x")).toBe(true);
+    expect(isRelayControlPath("/")).toBe(true);
+    expect(isRelayControlPath("/proxy/https/www.hotstar.com/")).toBe(true);
+    expect(isRelayControlPath("/in/movies/foo")).toBe(false);
+  });
+
+  it("normalizes bare Hotstar root to /in", () => {
+    expect(normalizeRelayTarget("https://www.hotstar.com")).toBe("https://www.hotstar.com/in");
+    expect(normalizeRelayTarget("https://www.hotstar.com/")).toBe("https://www.hotstar.com/in");
+    expect(normalizeRelayTarget("https://www.hotstar.com/in/movies/foo")).toBe(
+      "https://www.hotstar.com/in/movies/foo",
+    );
+    expect(toPathProxyUrl("https://www.hotstar.com")).toBe(
+      `${BACKEND_ORIGIN}/proxy/https/www.hotstar.com/in`,
+    );
   });
 });

@@ -24,10 +24,11 @@
     <p id="state">Checking…</p>
     <button id="toggle">Toggle</button>
     <label class="row"><input type="checkbox" id="adBlock" checked /> Block ads &amp; trackers on relay tabs</label>
-    <p class="hint">
-      1. Open <a href="http://127.0.0.1:3000/portal" target="_blank">127.0.0.1:3000/portal</a>.<br />
-      2. Enable routing on that tab (or it enables when you click Open).<br />
-      3. Enter the site on the portal — never type it in the Chrome address bar.
+        <p class="hint">
+      Use <strong>Chrome</strong> with this extension installed (Brave won't route tabs).<br />
+      1. Open <a href="http://127.0.0.1:3000/portal" target="_blank">127.0.0.1:3000/portal</a> in a <strong>new window</strong>.<br />
+      2. Enter the site on the portal — never type it in the Chrome address bar.<br />
+      3. Click <strong>Open through phone</strong> (routing starts on the proxy tab only).
     </p>
     <p class="err" id="error" hidden></p>
     <script src="popup.js"></script>

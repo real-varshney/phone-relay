@@ -1,5 +1,5 @@
 import type { IncomingMessage } from "node:http";
-import { isRelayDashboardApi } from "@phone-relay/protocol";
+import { isRelayControlPath } from "@phone-relay/protocol";
 
 export type RelaySite = { scheme: string; host: string };
 
@@ -75,13 +75,10 @@ export function isDefiniteLeakedMediaSegment(pathname: string): boolean {
 
 /** GET leaked paths on :3000 without /proxy — proxied site assets/APIs, not dashboard. */
 export function isLeakedSiteAsset(pathname: string): boolean {
-  if (pathname === "/" || pathname === "/relay-inject.js") return false;
-  if (isRelayDashboardApi(pathname)) return false;
-  if (pathname.startsWith("/proxy")) return false;
+  if (isRelayControlPath(pathname)) return false;
   if (pathname.startsWith("/@")) return false;
   if (pathname.startsWith("/node_modules/")) return false;
   if (pathname.startsWith("/src/")) return false;
-  if (pathname.startsWith("/phone")) return false;
   if (isLeakedMediaSegment(pathname)) return false;
   return true;
 }

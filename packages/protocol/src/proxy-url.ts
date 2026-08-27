@@ -1,6 +1,23 @@
+import { isRelayDashboardApi } from "./relay-api.ts";
+
 export const BACKEND_ORIGIN = "http://127.0.0.1:3000";
 export const PROXY_PATH = "/proxy";
 export const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "backend.lcl"]);
+
+/** Dashboard, portal, proxy entry, and other local-only paths — never map to the proxied site. */
+export function isRelayControlPath(pathname: string): boolean {
+  const p = pathname.split("?")[0]?.split("#")[0] ?? pathname;
+  return (
+    p === "/" ||
+    p === "/health" ||
+    p.startsWith("/portal") ||
+    p.startsWith("/phone") ||
+    p.startsWith(PROXY_PATH) ||
+    isRelayDashboardApi(p) ||
+    p.endsWith("/relay-inject.js") ||
+    p.endsWith("/ad-filters.js")
+  );
+}
 
 export function isLocalBackendUrl(raw: string): boolean {
   try {
@@ -54,8 +71,22 @@ export function decodeRelayTarget(requestUrl: string): string | null {
   }
 }
 
+export function normalizeRelayTarget(target: string): string {
+  try {
+    const u = new URL(target);
+    if (u.hostname === "www.hotstar.com" && (u.pathname === "/" || u.pathname === "")) {
+      u.pathname = "/in";
+      return u.toString();
+    }
+  } catch {
+    /* ignore */
+  }
+  return target;
+}
+
 export function toPathProxyUrl(target: string, origin = BACKEND_ORIGIN): string {
-  const u = new URL(target);
+  const normalized = normalizeRelayTarget(target);
+  const u = new URL(normalized);
   const path = u.pathname === "/" ? "" : u.pathname;
   const q = u.search;
   return `${origin}${PROXY_PATH}/${u.protocol.replace(":", "")}/${u.host}${path}${q}`;

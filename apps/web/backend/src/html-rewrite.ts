@@ -1,4 +1,10 @@
-import { isLocalBackendUrl } from "@phone-relay/protocol";
+import {
+  DEFAULT_PROXY_RESOURCE_TYPES,
+  isFullProxyMode,
+  isLocalBackendUrl,
+  normalizeProxyResourceTypes,
+  type ProxyResourceTypeId,
+} from "@phone-relay/protocol";
 
 function pathProxyUrl(raw: string, origin: string): string {
   try {
@@ -21,7 +27,7 @@ function proxyBaseHref(targetUrl: string, origin: string): string {
  * to same-origin proxy paths (document stays on 127.0.0.1:3000).
  */
 export function locationSpoofScript(): string {
-  return `<script>(function(){var PR=/^\\/proxy\\/(https?)\\/([^/]+)(\\/.*)?$/;var m=location.pathname.match(PR);var scheme,host;if(m){scheme=m[1];host=m[2];}else{var hm=document.cookie.match(/(?:^|;)\\s*relay-site=([^;]+)/);if(!hm)return;host=decodeURIComponent(hm[1].trim());var sm=document.cookie.match(/(?:^|;)\\s*relay-scheme=([^;]+)/);scheme=sm?decodeURIComponent(sm[1].trim()):"https";}try{sessionStorage.setItem("__relay_site_scheme__",scheme);sessionStorage.setItem("__relay_site_host__",host);}catch(e){}var sitePath=m?(m[3]||"/"):location.pathname;var r=new URL(scheme+"://"+host+sitePath+location.search+location.hash);function toDocUrl(u){if(u==null||u==="")return u;var s=String(u),emb=s.match(/(\\/proxy\\/(?:https?)\\/[^?\\s#]+(?:\\/[^?\\s#]*)?(?:\\?[^#\\s]*)?(?:#\\S*)?)/);if(emb)return emb[1];if(s.startsWith("/proxy/"))return s;try{var p=new URL(s,r.href);if(p.hostname===host)return"/proxy/"+scheme+"/"+host+(p.pathname||"/")+p.search+p.hash}catch(e){}if(s.startsWith("/"))return"/proxy/"+scheme+"/"+host+s;return s}var nativeLoc=location;var fake={get href(){return r.href},set href(u){nativeLoc.assign(toDocUrl(u));},get origin(){return r.origin},get protocol(){return r.protocol},get host(){return r.host},get hostname(){return r.hostname},get port(){return r.port},get pathname(){return r.pathname},get search(){return r.search},get hash(){return r.hash},toString:function(){return r.href},assign:function(u){nativeLoc.assign(toDocUrl(u));},replace:function(u){nativeLoc.replace(toDocUrl(u));},reload:nativeLoc.reload.bind(nativeLoc)};try{Object.defineProperty(window,"location",{get:function(){return fake},configurable:true});Object.defineProperty(document,"location",{get:function(){return fake},configurable:true})}catch(e){}function wrapHist(fn){return function(state,title,url){var docUrl=url==null||url===""?url:toDocUrl(url);var out=fn.call(this,state,title,docUrl);if(url!=null&&url!==""){try{var n=new URL(url,r.href);r.pathname=n.pathname;r.search=n.search;r.hash=n.hash}catch(e){}}return out}}history.pushState=wrapHist(history.pushState.bind(history));history.replaceState=wrapHist(history.replaceState.bind(history));window.__PHONE_RELAY_SITE__=r.href})();</script>`;
+  return `<script>(function(){var PR=/^\\/proxy\\/(https?)\\/([^/]+)(\\/.*)?$/;var m=location.pathname.match(PR);var scheme,host;if(m){scheme=m[1];host=m[2];}else{try{host=sessionStorage.getItem("__relay_site_host__");scheme=sessionStorage.getItem("__relay_site_scheme__")||"https";}catch(e){}if(!host){var hm=document.cookie.match(/(?:^|;)\\s*relay-site=([^;]+)/);if(!hm)return;host=decodeURIComponent(hm[1].trim());var sm=document.cookie.match(/(?:^|;)\\s*relay-scheme=([^;]+)/);scheme=sm?decodeURIComponent(sm[1].trim()):"https";}}try{sessionStorage.setItem("__relay_site_scheme__",scheme);sessionStorage.setItem("__relay_site_host__",host);}catch(e){}var sitePath=m?(m[3]||"/"):location.pathname;var r=new URL(scheme+"://"+host+sitePath+location.search+location.hash);function isCtl(p){return p==="/"||p==="/health"||p.indexOf("/portal")===0||p.indexOf("/phone")===0||p.indexOf("/proxy")===0||p.indexOf("/api/pr7k9m2")===0||p.slice(-15)==="/relay-inject.js"||p.slice(-14)==="/ad-filters.js"}function toDocUrl(u){if(u==null||u==="")return u;var s=String(u),emb=s.match(/(\\/proxy\\/(?:https?)\\/[^?\\s#]+(?:\\/[^?\\s#]*)?(?:\\?[^#\\s]*)?(?:#\\S*)?)/);if(emb)return emb[1];if(s.startsWith("/proxy/"))return s;try{var p=new URL(s,r.href);if(p.hostname===host)return"/proxy/"+scheme+"/"+host+(p.pathname||"/")+p.search+p.hash}catch(e){}if(s.startsWith("/")){var cp=s.split("?")[0].split("#")[0];if(isCtl(cp))return s;return"/proxy/"+scheme+"/"+host+s}return s}var nativeLoc=location;var fake={get href(){return r.href},set href(u){nativeLoc.assign(toDocUrl(u));},get origin(){return r.origin},get protocol(){return r.protocol},get host(){return r.host},get hostname(){return r.hostname},get port(){return r.port},get pathname(){return r.pathname},get search(){return r.search},get hash(){return r.hash},toString:function(){return r.href},assign:function(u){nativeLoc.assign(toDocUrl(u));},replace:function(u){nativeLoc.replace(toDocUrl(u));},reload:nativeLoc.reload.bind(nativeLoc)};try{Object.defineProperty(window,"location",{get:function(){return fake},configurable:true});Object.defineProperty(document,"location",{get:function(){return fake},configurable:true})}catch(e){}function wrapHist(fn){return function(state,title,url){var docUrl=url==null||url===""?url:toDocUrl(url);var out=fn.call(this,state,title,docUrl);if(url!=null&&url!==""){try{var n=new URL(url,r.href);r.pathname=n.pathname;r.search=n.search;r.hash=n.hash}catch(e){}}return out}}history.pushState=wrapHist(history.pushState.bind(history));history.replaceState=wrapHist(history.replaceState.bind(history));window.__PHONE_RELAY_SITE__=r.href})();</script>`;
 }
 
 /** Rewrite root-absolute src/href="/path" so they work when document origin is 127.0.0.1:3000. */
@@ -39,6 +45,24 @@ export function rewriteRootAbsoluteUrls(html: string, targetUrl: string, origin:
   );
 }
 
+function rewriteSrcsetAttr(value: string, origin: string): string {
+  return value
+    .split(",")
+    .map((part) => {
+      const t = part.trim();
+      const sp = t.lastIndexOf(" ");
+      if (sp === -1) return pathProxyUrl(t, origin);
+      return `${pathProxyUrl(t.slice(0, sp), origin)}${t.slice(sp)}`;
+    })
+    .join(", ");
+}
+
+function rewriteSrcsetInHtml(html: string, origin: string): string {
+  return html.replace(/(\ssrcset=)(["'])([^"']+)(\2)/gi, (_match, lead, quote, value, endQuote) => {
+    return `${lead}${quote}${rewriteSrcsetAttr(value, origin)}${endQuote}`;
+  });
+}
+
 /** Rewrite absolute https:// CDN URLs in HTML attributes (favicon, images, scripts). */
 export function rewriteAbsoluteUrls(html: string, origin: string): string {
   return html.replace(
@@ -47,8 +71,19 @@ export function rewriteAbsoluteUrls(html: string, origin: string): string {
   );
 }
 
-/** Rewrite url(https://…) inside proxied stylesheets. */
-export function rewriteCssUrls(css: string, origin: string): string {
+function siteBaseHref(targetUrl: string): string {
+  return `${new URL(targetUrl).origin}/`;
+}
+
+function proxyTypesBootstrapScript(types: ProxyResourceTypeId[]): string {
+  const json = JSON.stringify(types);
+  return `<script>try{window.__PHONE_RELAY_PROXY_TYPES__=${json};sessionStorage.setItem("__relay_proxy_types__",${JSON.stringify(json)});}catch(e){}</script>`;
+}
+
+/** Rewrite url(https://…) inside proxied stylesheets (full proxy mode only). */
+export function rewriteCssUrls(css: string, origin: string, proxyTypes?: ProxyResourceTypeId[]): string {
+  const types = proxyTypes ? normalizeProxyResourceTypes(proxyTypes) : [...DEFAULT_PROXY_RESOURCE_TYPES];
+  if (!isFullProxyMode(types)) return css;
   return css.replace(/url\(\s*(["']?)(https?:\/\/[^"')]+)\1\s*\)/gi, (_m, quote, url) => {
     return `url(${quote}${pathProxyUrl(url, origin)}${quote})`;
   });
@@ -65,12 +100,28 @@ export function rewriteMetaRefresh(html: string, targetUrl: string, origin: stri
   );
 }
 
-export function rewriteHtml(html: string, targetUrl: string, origin: string): string {
-  const safeBase = proxyBaseHref(targetUrl, origin).replace(/"/g, "&quot;");
-  const headInject = `${locationSpoofScript()}<base href="${safeBase}"><script src="${origin}/ad-filters.js"></script><script src="${origin}/relay-inject.js"></script>`;
-  let out = rewriteAbsoluteUrls(html, origin);
-  out = rewriteRootAbsoluteUrls(out, targetUrl, origin);
-  out = rewriteMetaRefresh(out, targetUrl, origin);
+export function rewriteHtml(
+  html: string,
+  targetUrl: string,
+  origin: string,
+  proxyTypes?: ProxyResourceTypeId[],
+): string {
+  const types = proxyTypes ? normalizeProxyResourceTypes(proxyTypes) : [...DEFAULT_PROXY_RESOURCE_TYPES];
+  const full = isFullProxyMode(types);
+  const safeBase = (full ? proxyBaseHref(targetUrl, origin) : siteBaseHref(targetUrl)).replace(/"/g, "&quot;");
+  const relayScripts = full
+    ? `<script src="${origin}/ad-filters.js"></script><script src="${origin}/relay-inject.js"></script>`
+    : "";
+  const headInject = `${locationSpoofScript()}${proxyTypesBootstrapScript(types)}<base href="${safeBase}">${relayScripts}`;
+  let out = html;
+  if (full) {
+    out = rewriteAbsoluteUrls(out, origin);
+    out = rewriteSrcsetInHtml(out, origin);
+    out = rewriteRootAbsoluteUrls(out, targetUrl, origin);
+    out = rewriteMetaRefresh(out, targetUrl, origin);
+  } else {
+    out = rewriteMetaRefresh(out, targetUrl, origin);
+  }
   if (/<head[^>]*>/i.test(out)) {
     return out.replace(/<head[^>]*>/i, (m) => `${m}${headInject}`);
   }
@@ -264,6 +315,9 @@ export function rewriteRedirectLocation(location: string, targetUrl: string, ori
     }
     if (/^https?:\/\//i.test(trimmed)) {
       return pathProxyUrl(trimmed, origin);
+    }
+    if (trimmed.startsWith("/")) {
+      return `${origin}/proxy/${scheme}/${host}${trimmed}`;
     }
   } catch {
     /* ignore */

@@ -81,6 +81,32 @@ Hotstar uses **Shaka Player + Widevine**. Console logs like `HSPlayer: Init Shak
 
 **If manifests and segments are 200 but still no picture:** Widevine decrypts on the **laptop**. The phone only fetches bytes. This architecture cannot fully mimic a phone browser for DRM. Use the Hotstar app on the phone to watch, or Chrome (not Brave) on the laptop without geo-block.
 
+## Cloudflare / bot protection (e.g. net77.cc)
+
+Sites behind **Cloudflare Managed Challenge**, Turnstile, or “Performing security verification” often **fail** in Phone Relay.
+
+**Why:** the phone fetches HTML with **OkHttp** (Android TLS fingerprint), but the challenge JavaScript runs in **Chrome on the laptop**. Cloudflare ties `cf_clearance` cookies to IP + browser fingerprint. Those do not match when the page is split across phone egress and laptop JS.
+
+**What you may see:**
+
+- “Performing security verification” then “Unable to connect”
+- Redirect loops to `/verify2?__cf_chl_…` (the relay rewrites these to `/proxy/https/site/verify2`, but the challenge still may not complete)
+- Blank page after challenge
+
+**What works instead:**
+
+- Open the site **directly in your phone’s browser** (Chrome/Samsung Internet) on mobile data — no laptop relay needed
+- Sites without interactive bot challenges (many streaming CDNs, simple HTTPS) work better than Cloudflare-protected portals
+
+**If you still want to try via relay:**
+
+1. Portal → `https://net77.cc` (exact HTTPS URL)
+2. Reload extension + restart backend
+3. DevTools → Network: challenge calls to `challenges.cloudflare.com` and `/cdn-cgi/` must go through `127.0.0.1:3000/proxy/…`, not direct
+4. Disable ad block in the extension popup for that tab
+
+There is no reliable fix for full Cloudflare interactive challenges with the current phone-OkHttp + laptop-Chrome design.
+
 ## CDN segments 403 — `No sub Token` / `auth-failure`
 
 Response headers look like:

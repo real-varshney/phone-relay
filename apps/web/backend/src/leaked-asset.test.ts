@@ -19,6 +19,14 @@ describe("leaked site assets", () => {
     expect(isLeakedSiteAsset(relayApiPath("status"))).toBe(false);
   });
 
+  it("does not treat relay dashboard or portal paths as leaked assets", () => {
+    expect(isLeakedSiteAsset("/portal")).toBe(false);
+    expect(isLeakedSiteAsset("/portal?target=https://www.hotstar.com")).toBe(false);
+    expect(isLeakedSiteAsset("/")).toBe(false);
+    expect(isLeakedSiteAsset("/health")).toBe(false);
+    expect(isLeakedSiteAsset("/phone")).toBe(false);
+  });
+
   it("does not treat Vite TypeScript modules as media segments", () => {
     expect(isLeakedMediaSegment("/src/main.ts")).toBe(false);
     expect(isLeakedMediaSegment("/@fs/C:/project/foo.ts")).toBe(false);
@@ -89,6 +97,20 @@ describe("html rewrite", () => {
       '<link rel="icon" href="https://secure-media.hotstar.com/web-assets/prod/favicon.ico">';
     const out = rewriteAbsoluteUrls(html, "http://127.0.0.1:3000");
     expect(out).toContain("/proxy/https/secure-media.hotstar.com/web-assets/prod/favicon.ico");
+  });
+
+  it("css-only mode keeps sub-resources on the real site and skips inject scripts", () => {
+    const html =
+      '<html><head><link rel="stylesheet" href="/style.css"><script src="/app.js"></script></head><body><img src="https://net77.cc/x.png"></body></html>';
+    const out = rewriteHtml(html, "https://net77.cc/", "http://127.0.0.1:3000", ["stylesheet"]);
+    expect(out).toContain('base href="https://net77.cc/"');
+    expect(out).toContain('href="/style.css"');
+    expect(out).toContain('src="/app.js"');
+    expect(out).not.toContain("/proxy/https/net77.cc/app.js");
+    expect(out).not.toContain("/proxy/https/net77.cc/x.png");
+    expect(out).not.toMatch(/<script src="[^"]*relay-inject\.js"/);
+    expect(out).not.toMatch(/<script src="[^"]*ad-filters\.js"/);
+    expect(out).toContain("__PHONE_RELAY_PROXY_TYPES__");
   });
 
   it("rewrites HTML document with location spoof, proxy base href, and inject", () => {
