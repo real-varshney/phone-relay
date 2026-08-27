@@ -117,6 +117,23 @@ describe("rewriteHeadersForTarget", () => {
     expect(out.Cookie).toBe("session=abc");
   });
 
+  it("omits Origin on no-cors image GET to the page host", () => {
+    const headers: Record<string, string> = {
+      Referer: "http://127.0.0.1:3000/proxy/https/www.hotstar.com/in/home",
+      Accept: "image/avif,image/webp,image/*,*/*;q=0.8",
+      "Sec-Fetch-Dest": "image",
+      "Sec-Fetch-Mode": "no-cors",
+    };
+    rewriteHeadersForTarget(
+      headers,
+      { headers: { referer: headers.Referer }, method: "GET" } as import("node:http").IncomingMessage,
+      proxyRefererToSiteUrl,
+      { targetHost: "www.hotstar.com", method: "GET" },
+    );
+    expect(headers.Origin).toBeUndefined();
+    expect(headers.Referer).toBe("https://www.hotstar.com/in/home");
+  });
+
   it("packs upstream Set-Cookie into x-relay-set-cookie for the browser bridge", () => {
     const out = outgoingFromRelay({
       "Content-Type": "application/json",

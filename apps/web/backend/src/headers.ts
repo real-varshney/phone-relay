@@ -124,8 +124,25 @@ export function rewriteHeadersForTarget(
     siteOrigin = rawOrigin;
   }
 
-  if (siteOrigin) {
-    headers.Origin = siteOrigin;
+  const method = (options?.method ?? req.method ?? "GET").toUpperCase();
+  const targetHost = options?.targetHost ?? "";
+  const secFetchDest = headerValue(headers, "sec-fetch-dest", "Sec-Fetch-Dest")?.toLowerCase();
+  const accept = headerValue(headers, "accept", "Accept") ?? "";
+  const isNoCorsSubresource =
+    (method === "GET" || method === "HEAD") &&
+    (secFetchDest === "image" ||
+      secFetchDest === "font" ||
+      secFetchDest === "style" ||
+      secFetchDest === "script" ||
+      accept.includes("image/"));
+
+  if (!isNoCorsSubresource) {
+    if (siteOrigin) {
+      headers.Origin = siteOrigin;
+    }
+  } else {
+    delete headers.Origin;
+    delete headers.origin;
   }
   if (siteReferer) {
     headers.Referer = siteReferer;
@@ -133,8 +150,6 @@ export function rewriteHeadersForTarget(
     headers.Referer = `${siteOrigin}/`;
   }
 
-  const method = (options?.method ?? req.method ?? "GET").toUpperCase();
-  const targetHost = options?.targetHost ?? "";
   if (targetHost && isStreamingMediaCdnHost(targetHost) && (method === "GET" || method === "HEAD")) {
     delete headers.Origin;
     delete headers.origin;

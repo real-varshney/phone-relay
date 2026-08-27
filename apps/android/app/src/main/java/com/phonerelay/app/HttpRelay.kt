@@ -16,19 +16,23 @@ class HttpRelay(private val client: OkHttpClient) {
     fun execute(msg: JSONObject): JSONObject {
         var last = executeOnce(msg)
         val errMsg = last.optJSONObject("error")?.optString("message").orEmpty()
-        if (!isTransientCancel(errMsg)) return last
+        if (!isTransientRelayError(errMsg)) return last
         repeat(2) {
             Thread.sleep(250L * (it + 1))
             last = executeOnce(msg)
             val retryMsg = last.optJSONObject("error")?.optString("message").orEmpty()
-            if (!isTransientCancel(retryMsg)) return last
+            if (!isTransientRelayError(retryMsg)) return last
         }
         return last
     }
 
-    private fun isTransientCancel(message: String): Boolean {
+    private fun isTransientRelayError(message: String): Boolean {
         return message.contains("CANCEL", ignoreCase = true) ||
-            message.contains("stream was reset", ignoreCase = true)
+            message.contains("stream was reset", ignoreCase = true) ||
+            message.contains("unexpected end of stream", ignoreCase = true) ||
+            message.contains("EOF", ignoreCase = true) ||
+            message.contains("connection reset", ignoreCase = true) ||
+            message.contains("Connection closed", ignoreCase = true)
     }
 
     private fun executeOnce(msg: JSONObject): JSONObject {
@@ -87,7 +91,6 @@ class HttpRelay(private val client: OkHttpClient) {
         }
         // Avoid brotli/gzip bodies the relay stack cannot safely round-trip to Chrome.
         builder.header("Accept-Encoding", "identity")
-        builder.header("Connection", "close")
 
         val timed = relayClient.newBuilder()
             .callTimeout(timeoutMs, TimeUnit.MILLISECONDS)

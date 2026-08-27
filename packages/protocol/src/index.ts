@@ -10,6 +10,13 @@ export {
   toPathProxyUrl,
 } from "./proxy-url.ts";
 export {
+  extractHotstarCmsFromRelativePath,
+  extractHotstarCmsPath,
+  hotstarCmsCdnUrl,
+  remapHotstarCmsAssetUrl,
+  rewriteHotstarCmsUrlsInText,
+} from "./hotstar-cms.ts";
+export {
   PROXY_RESOURCE_TYPE_IDS,
   PROXY_RESOURCE_TYPE_OPTIONS,
   DEFAULT_PROXY_RESOURCE_TYPES,

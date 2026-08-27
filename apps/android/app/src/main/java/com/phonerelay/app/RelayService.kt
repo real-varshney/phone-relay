@@ -34,6 +34,7 @@ class RelayService : Service() {
         .cookieJar(RelayCookieJar())
         .protocols(listOf(Protocol.HTTP_1_1))
         .connectionPool(ConnectionPool(16, 5, TimeUnit.MINUTES))
+        .retryOnConnectionFailure(true)
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(120, TimeUnit.SECONDS)
         .writeTimeout(120, TimeUnit.SECONDS)

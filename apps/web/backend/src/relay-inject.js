@@ -120,8 +120,20 @@
     }
   }
 
+  function remapHotstarCmsUrl(abs) {
+    try {
+      const u = new URL(abs);
+      if (u.hostname !== "www.hotstar.com") return abs;
+      const m = u.pathname.match(/^(?:\/in)?(\/w_\d+\/sources\/r1\/cms\/prod\/.+)$/);
+      if (!m) return abs;
+      return `https://img.hotstar.com/image/upload${m[1]}${u.search}${u.hash}`;
+    } catch {
+      return abs;
+    }
+  }
+
   function toPathProxy(abs) {
-    const u = new URL(abs);
+    const u = new URL(remapHotstarCmsUrl(abs));
     const path = u.pathname === "/" ? "" : u.pathname;
     return `${PROXY_ORIGIN}/proxy/${u.protocol.replace(":", "")}/${u.host}${path}${u.search}${u.hash}`;
   }

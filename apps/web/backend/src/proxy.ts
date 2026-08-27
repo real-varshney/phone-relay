@@ -3,6 +3,8 @@ import {
   decodeRelayTarget,
   normalizeRelayTarget,
   parseProxyTypesCookie,
+  remapHotstarCmsAssetUrl,
+  rewriteHotstarCmsUrlsInText,
   RELAY_MAX_BODY_BYTES,
 } from "@phone-relay/protocol";
 import { inspectDestination } from "@phone-relay/validation";
@@ -28,6 +30,18 @@ import type { EventLog } from "./log.ts";
 import type { PhoneHub } from "./phone-hub.ts";
 
 const MAX_BODY = RELAY_MAX_BODY_BYTES;
+
+function isTransientRelayError(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes("cancel") ||
+    m.includes("stream was reset") ||
+    m.includes("unexpected end of stream") ||
+    m.includes("eof") ||
+    m.includes("connection reset") ||
+    m.includes("connection closed")
+  );
+}
 
 function headerMap(req: IncomingMessage): Record<string, string | string[] | undefined> {
   return req.headers;
@@ -112,6 +126,7 @@ export async function handleProxy(
     return;
   }
   target = normalizeRelayTarget(target);
+  target = remapHotstarCmsAssetUrl(target);
 
   const policy = await inspectDestination(target, {
     allowPrivateLan: deps.allowPrivateLan() || deps.policyTestMode,
@@ -161,11 +176,11 @@ export async function handleProxy(
     method: req.method ?? "GET",
     cachedManifestUrl: cachedManifestUrl(clientKey) ?? undefined,
   });
-  if (
-    !relayHeaders.Cookie &&
-    !relayHeaders.cookie &&
-    !isStreamingMediaCdnHost(policy.hostname)
-  ) {
+  const hasBrowserCookie = Boolean(relayHeaders.Cookie ?? relayHeaders.cookie);
+  // Cookie jar is only for CDN segment auth when the browser sends no cookies.
+  // When the browser already has session cookies, merging the jar causes stale
+  // .hotstar.com cookies and truncated responses on image/API requests.
+  if (hasBrowserCookie || !isStreamingMediaCdnHost(policy.hostname)) {
     relayHeaders["X-Relay-No-Cookies"] = "1";
   }
 
@@ -181,11 +196,8 @@ export async function handleProxy(
     bodyBase64: body.length ? body.toString("base64") : null,
     timeoutMs,
   });
-  const cancelMsg = result.error?.message ?? "";
-  if (
-    result.error?.code === "DESTINATION_UNREACHABLE" &&
-    (cancelMsg.includes("CANCEL") || cancelMsg.includes("stream was reset"))
-  ) {
+  const errMsg = result.error?.message ?? "";
+  if (result.error?.code === "DESTINATION_UNREACHABLE" && isTransientRelayError(errMsg)) {
     await new Promise((r) => setTimeout(r, 350));
     result = await deps.hub.relay({
       method: (req.method ?? "GET").toUpperCase(),
@@ -235,8 +247,12 @@ export async function handleProxy(
   const contentType = headers["content-type"] ?? headers["Content-Type"];
   const ct = typeof contentType === "string" ? contentType : undefined;
   const cssProxyTypes = parseProxyTypesCookie(req.headers.cookie);
+  const secFetchDest = typeof req.headers["sec-fetch-dest"] === "string" ? req.headers["sec-fetch-dest"] : "";
+  const acceptHeader = typeof req.headers.accept === "string" ? req.headers.accept : "";
+  const clientWantsImage =
+    secFetchDest === "image" || (acceptHeader.includes("image/") && !acceptHeader.includes("text/html"));
   if (isPlainTextBody(payload)) {
-    if (isHtmlContentType(ct)) {
+    if (isHtmlContentType(ct) && !clientWantsImage) {
       // HTML via /proxy/ always needs full rewrite (Hotstar, streaming). Selective
       // proxy types are enforced by the extension DNR + inject, not HTML rewriting.
       payload = Buffer.from(rewriteHtml(payload.toString("utf8"), policy.url.toString(), deps.origin), "utf8");
@@ -248,8 +264,14 @@ export async function handleProxy(
       if (result.status && result.status >= 200 && result.status < 400) {
         noteManifestUrl(clientKey, policy.url.toString());
       }
-    } else if (ct?.includes("json") && payload.toString("utf8").includes("/proxy/")) {
-      payload = Buffer.from(restoreSiteUrlsFromProxy(payload.toString("utf8")), "utf8");
+    } else if (ct?.includes("json")) {
+      let text = payload.toString("utf8");
+      if (text.includes("www.hotstar.com") && text.includes("/sources/r1/cms/")) {
+        text = rewriteHotstarCmsUrlsInText(text, deps.origin);
+      } else if (text.includes("/proxy/")) {
+        text = restoreSiteUrlsFromProxy(text);
+      }
+      payload = Buffer.from(text, "utf8");
     }
   }
 

@@ -1,14 +1,17 @@
 import {
   DEFAULT_PROXY_RESOURCE_TYPES,
+  extractHotstarCmsFromRelativePath,
   isFullProxyMode,
   isLocalBackendUrl,
   normalizeProxyResourceTypes,
+  remapHotstarCmsAssetUrl,
   type ProxyResourceTypeId,
 } from "@phone-relay/protocol";
 
 function pathProxyUrl(raw: string, origin: string): string {
   try {
-    const u = new URL(raw);
+    const remapped = raw.startsWith("http") ? remapHotstarCmsAssetUrl(raw) : raw;
+    const u = new URL(remapped);
     if (isLocalBackendUrl(u.toString())) return raw;
     const path = u.pathname === "/" ? "" : u.pathname;
     return `${origin}/proxy/${u.protocol.replace(":", "")}/${u.host}${path}${u.search}`;
@@ -41,7 +44,13 @@ export function rewriteRootAbsoluteUrls(html: string, targetUrl: string, origin:
   const prefix = `${origin}/proxy/${site.protocol.replace(":", "")}/${site.host}`;
   return html.replace(
     /(\s(?:href|src|action)=)(["'])\/([^"'#?][^"']*)(\2)/gi,
-    (_match, lead, quote, path, endQuote) => `${lead}${quote}${prefix}/${path}${endQuote}`,
+    (_match, lead, quote, path, endQuote) => {
+      const cms = extractHotstarCmsFromRelativePath(path);
+      if (cms) {
+        return `${lead}${quote}${origin}/proxy/https/img.hotstar.com/image/upload/${cms}${endQuote}`;
+      }
+      return `${lead}${quote}${prefix}/${path}${endQuote}`;
+    },
   );
 }
 

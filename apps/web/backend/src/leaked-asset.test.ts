@@ -206,6 +206,15 @@ describe("html rewrite", () => {
     );
   });
 
+  it("rewrites Hotstar CMS image paths to img.hotstar.com proxy URLs", () => {
+    const html =
+      '<img src="/in/w_256/sources/r1/cms/prod/2448/1462448-v-f21a9b6d25d3" alt="x">';
+    const out = rewriteHtml(html, "https://www.hotstar.com/in/home", "http://127.0.0.1:3000");
+    expect(out).toContain(
+      "/proxy/https/img.hotstar.com/image/upload/w_256/sources/r1/cms/prod/2448/1462448-v-f21a9b6d25d3",
+    );
+  });
+
   it("rewrites upstream redirect locations to proxy paths", () => {
     expect(
       rewriteRedirectLocation(
